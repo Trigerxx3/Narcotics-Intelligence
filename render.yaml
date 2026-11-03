@@ -17,6 +17,12 @@ services:
         generateValue: true
       - key: DATABASE_URL
         value: "postgresql://neondb_owner:npg_4fHz5eSvQXND@ep-tiny-morning-a41u62xn-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+      - key: TELEGRAM_API_ID
+        value: "20087736"
+      - key: TELEGRAM_API_HASH
+        value: "6fc2688220304c433513c64c48b01fe2"
+      - key: TELEGRAM_STRING_SESSION
+        value: "1BVtsOIEBu4xMOKD7IH6-67gIIGvwIs-zI7ocrDX264oQy5O0icqtPeiB0XY82l4PkUgeFyN71JW9UnpbOot_GvNo92uV7KWrp9r3a25f3irxlV68hYkhsgr-Rz5IXk-ZVpQkudQEycKqIXgQWw1UfznNz1Cm3iUKCUo5z6I2J9JcZbkLWCQob9xZEiy24Qq3cz_skghjOwR9253ac05zcN5eohylLf975yC6_4AudTlOS_EIJ7C-5Wxp8_pWwbSwRPI9X9ETLoYQAiU9aNITJSRRqdVuNVNPUy4xnTFQZvSZ-27xJCrkS4rD5iU7j6e-okBbxnP9Lzo9wd9dxRjVK9SucDJTRuI="
       - key: PYTHON_VERSION
         value: 3.12.7
 
