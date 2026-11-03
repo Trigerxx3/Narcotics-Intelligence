@@ -50,8 +50,9 @@ class TelegramWebScraper:
         try:
             channels = []
             
-            # Popular channels (you can expand this list)
+            # Popular channels
             popular_channels = [
+                {"username": "worldnews", "title": "World News", "description": "Global news channel"},
                 {"username": "durov", "title": "Pavel Durov", "description": "Telegram founder updates"},
                 {"username": "telegram", "title": "Telegram", "description": "Official Telegram channel"},
                 {"username": "breakingmash", "title": "Breaking Mash", "description": "Breaking news"},
@@ -63,25 +64,14 @@ class TelegramWebScraper:
             ]
             
             if search_query:
-                # Filter channels by search query
                 channels = [
                     ch for ch in popular_channels 
                     if search_query.lower() in ch['title'].lower() or 
-                       search_query.lower() in ch['description'].lower()
+                       search_query.lower() in ch['description'].lower() or
+                       search_query.lower() in ch['username'].lower()
                 ]
             else:
                 channels = popular_channels
-            
-            # Add additional info by checking each channel
-            for channel in channels:
-                try:
-                    channel_info = self._get_channel_info(channel['username'])
-                    channel.update(channel_info)
-                except Exception as e:
-                    logger.warning(f"Failed to get info for {channel['username']}: {str(e)}")
-                    continue
-                
-                time.sleep(1)  # Rate limiting
             
             return channels
             
@@ -92,18 +82,17 @@ class TelegramWebScraper:
     def _get_channel_info(self, username: str) -> Dict:
         """Get basic info about a channel"""
         try:
-            url = f"{self.base_url}/{username}"
+            clean_username = username.strip().lstrip('@').split('/')[-1]
+            url = f"{self.base_url}/{clean_username}"
             response = self.session.get(url, timeout=10)
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 
-                # Extract channel info from meta tags
-                title = self._extract_meta_content(soup, 'og:title') or username
+                title = self._extract_meta_content(soup, 'og:title') or clean_username
                 description = self._extract_meta_content(soup, 'og:description') or ""
                 image = self._extract_meta_content(soup, 'og:image') or ""
                 
-                # Try to extract member count from page
                 members_text = soup.find('div', class_='tgme_page_extra')
                 members = 0
                 if members_text:
@@ -145,36 +134,43 @@ class TelegramWebScraper:
         except:
             return 0
 
-    def scrape_channel(self, username: str, limit: int = 20) -> List[Dict]:
+    def scrape_channel(self, username: str, limit: int = 50) -> List[Dict]:
         """
-        Scrape messages from a public Telegram channel
+        Scrape real messages from a public Telegram channel web preview (https://t.me/s/<channel>)
         """
         try:
             messages = []
-            url = f"{self.base_url}/{username}"
+            clean_username = username.strip().lstrip('@').split('/')[-1]
+            url = f"https://t.me/s/{clean_username}"
             
-            logger.info(f"🔍 Scraping Telegram channel: {username}")
+            logger.info(f"🔍 Scraping Telegram channel: {clean_username} via {url}")
             
             response = self.session.get(url, timeout=15)
             if response.status_code != 200:
-                logger.error(f"Failed to access channel {username}: {response.status_code}")
+                logger.error(f"Failed to access channel {clean_username}: {response.status_code}")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find message containers
+            # Find message containers on Telegram web preview
             message_elements = soup.find_all('div', class_='tgme_widget_message')
             
-            for i, msg_elem in enumerate(message_elements[:limit]):
+            if not message_elements:
+                logger.warning(f"No tgme_widget_message elements found for {clean_username}. Response len={len(response.content)}")
+            
+            # Grab messages up to limit
+            for i, msg_elem in enumerate(reversed(message_elements)):
+                if len(messages) >= limit:
+                    break
                 try:
-                    message_data = self._extract_message_data(msg_elem, username)
-                    if message_data:
+                    message_data = self._extract_message_data(msg_elem, clean_username)
+                    if message_data and message_data.get('text'):
                         messages.append(message_data)
                 except Exception as e:
                     logger.warning(f"Failed to extract message {i}: {str(e)}")
                     continue
             
-            logger.info(f"✅ Scraped {len(messages)} messages from {username}")
+            logger.info(f"✅ Scraped {len(messages)} real messages from {clean_username}")
             return messages
             
         except Exception as e:
@@ -189,7 +185,7 @@ class TelegramWebScraper:
             
             # Message text
             text_elem = msg_elem.find('div', class_='tgme_widget_message_text')
-            text = text_elem.get_text(strip=True) if text_elem else ""
+            text = text_elem.get_text(separator=' ', strip=True) if text_elem else ""
             
             # Date
             date_elem = msg_elem.find('time')
@@ -206,13 +202,11 @@ class TelegramWebScraper:
             media_type = None
             media_url = None
             
-            # Check for images
             img_elem = msg_elem.find('a', class_='tgme_widget_message_photo_wrap')
             if img_elem:
                 media_type = 'photo'
                 media_url = img_elem.get('href')
             
-            # Check for videos
             video_elem = msg_elem.find('video') or msg_elem.find('a', class_='tgme_widget_message_video_wrap')
             if video_elem:
                 media_type = 'video'
@@ -221,22 +215,31 @@ class TelegramWebScraper:
                 else:
                     media_url = video_elem.get('href')
             
-            # Check for links
             link_elem = msg_elem.find('a', class_='tgme_widget_message_link_preview')
             if link_elem and not media_type:
                 media_type = 'link'
                 media_url = link_elem.get('href')
             
+            author_elem = msg_elem.find('div', class_='tgme_widget_message_from_author') or msg_elem.find('span', class_='tgme_widget_message_author_name')
+            author = author_elem.get_text(strip=True) if author_elem else username
+
             return {
                 'id': msg_id,
                 'text': text,
                 'date': date,
+                'author': author,
+                'author_id': username,
                 'views': views,
+                'forwards': 0,
+                'replies': 0,
+                'media': bool(media_type),
                 'media_type': media_type,
                 'media_url': media_url,
                 'channel': username,
                 'platform': 'telegram',
-                'url': f"{self.base_url}/{username}/{msg_id}" if msg_id else None
+                'url': f"https://t.me/{username}/{msg_id}" if msg_id else f"https://t.me/{username}",
+                'matched_keywords': [],
+                'keyword_score': 0
             }
             
         except Exception as e:
@@ -244,14 +247,9 @@ class TelegramWebScraper:
             return None
 
     def search_channels(self, query: str) -> List[Dict]:
-        """
-        Search for channels (simplified version)
-        """
+        """Search for channels"""
         try:
-            # For now, search within known channels
-            channels = self.get_public_channels(query)
-            return channels
-            
+            return self.get_public_channels(query)
         except Exception as e:
             logger.error(f"Failed to search channels: {str(e)}")
             return []

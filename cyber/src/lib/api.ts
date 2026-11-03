@@ -87,22 +87,20 @@ class ApiClient {
       console.log(`Response: ${response.status} from ${response.url}`);
 
       if (!response.ok) {
-        // For auth endpoints, include the response body for better error handling
-        if (url.includes('/auth/')) {
-          try {
-            const errorData = await response.json()
-            const error = new Error(`HTTP ${response.status}`)
-            ;(error as any).status = response.status
-            ;(error as any).data = errorData
-            throw error
-          } catch (jsonError) {
-            const error = new Error(`HTTP ${response.status}`)
-            ;(error as any).status = response.status
-            throw error
-          }
+        let errorData: any = null
+        try {
+          errorData = await response.json()
+        } catch {}
+
+        if (response.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
         }
-        const error = new Error(`HTTP ${response.status}`)
+
+        const errorMessage = errorData?.message || errorData?.error || errorData?.msg || `HTTP ${response.status}`
+        const error = new Error(errorMessage)
         ;(error as any).status = response.status
+        ;(error as any).data = errorData
         throw error
       }
 
@@ -110,36 +108,34 @@ class ApiClient {
       console.log(`Data received:`, data);
       return data;
     } catch (error) {
-      console.error(`Fetch error:`, error)
-      console.error(`Error details:`, {
-        message: (error as any)?.message,
-        data: (error as any)?.data,
-        status: (error as any)?.status
-      })
-      
-      // If this is an auth error with data, preserve the original error FIRST
-      if ((error as any)?.data && url.includes('/auth/')) {
-        console.log('Preserving auth error with data:', error)
-        console.log('Error data content:', (error as any).data)
+      const status = (error as any)?.status
+
+      if (status === 401 || status === 403) {
+        console.warn(`Auth ${status} for ${url}:`, (error as any)?.message)
         throw error
       }
-      
-      // Debug: Check if this is an auth URL but no data
-      if (url.includes('/auth/') && !(error as any)?.data) {
-        console.log('Auth URL but no error data:', { url, error, hasData: !!(error as any)?.data })
+
+      if (status) {
+        console.warn(`Request failed with status ${status} for ${url}:`, (error as any)?.message)
+        throw error
       }
-      
-      // Handle different types of errors
+
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error(`Cannot connect to backend. Please check if the backend server is running on ${API_BASE_URL}`)
+        const netErr = new Error(`Cannot connect to backend. Please check if the backend server is running on ${API_BASE_URL}`)
+        ;(netErr as any).status = 0
+        throw netErr
       }
       
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request timeout. Backend may be slow or unavailable.`)
+        const timeoutErr = new Error(`Request timeout. Backend may be slow or unavailable.`)
+        ;(timeoutErr as any).status = 408
+        throw timeoutErr
       }
       
       const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Cannot connect to backend at ${url}. Error: ${message}`)
+      const genericErr = new Error(`Cannot connect to backend at ${url}. Error: ${message}`)
+      ;(genericErr as any).status = (error as any)?.status
+      throw genericErr
     }
   }
 
@@ -178,22 +174,20 @@ class ApiClient {
       console.log(`Response: ${response.status} from ${response.url}`);
 
       if (!response.ok) {
-        // For auth endpoints, include the response body for better error handling
-        if (url.includes('/auth/')) {
-          try {
-            const errorData = await response.json()
-            const error = new Error(`HTTP ${response.status}`)
-            ;(error as any).status = response.status
-            ;(error as any).data = errorData
-            throw error
-          } catch (jsonError) {
-            const error = new Error(`HTTP ${response.status}`)
-            ;(error as any).status = response.status
-            throw error
-          }
+        let errorData: any = null
+        try {
+          errorData = await response.json()
+        } catch {}
+
+        if (response.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
         }
-        const error = new Error(`HTTP ${response.status}`)
+
+        const errorMessage = errorData?.message || errorData?.error || errorData?.msg || `HTTP ${response.status}`
+        const error = new Error(errorMessage)
         ;(error as any).status = response.status
+        ;(error as any).data = errorData
         throw error
       }
 
@@ -201,19 +195,35 @@ class ApiClient {
       console.log(`Data received:`, data);
       return data;
     } catch (error) {
-      console.error(`Fetch error:`, error)
-      
+      const status = (error as any)?.status
+
+      if (status === 401 || status === 403) {
+        console.warn(`Auth ${status} for ${url}:`, (error as any)?.message)
+        throw error
+      }
+
+      if (status) {
+        console.warn(`Request failed with status ${status} for ${url}:`, (error as any)?.message)
+        throw error
+      }
+
       // Handle different types of errors
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error(`Cannot connect to backend. Please check if the backend server is running on ${API_BASE_URL}`)
+        const netErr = new Error(`Cannot connect to backend. Please check if the backend server is running on ${API_BASE_URL}`)
+        ;(netErr as any).status = 0
+        throw netErr
       }
       
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request timeout after ${timeoutMs/1000}s. Backend may be slow or unavailable.`)
+        const timeoutErr = new Error(`Request timeout after ${timeoutMs/1000}s. Backend may be slow or unavailable.`)
+        ;(timeoutErr as any).status = 408
+        throw timeoutErr
       }
       
       const message = error instanceof Error ? error.message : String(error)
-      throw new Error(`Cannot connect to backend at ${url}. Error: ${message}`)
+      const genericErr = new Error(`Cannot connect to backend at ${url}. Error: ${message}`)
+      ;(genericErr as any).status = (error as any)?.status
+      throw genericErr
     }
   }
 

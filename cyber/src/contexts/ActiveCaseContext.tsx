@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import apiClient from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 
 type ActiveCase = any | null
 
@@ -16,15 +17,23 @@ interface ActiveCaseContextType {
 const ActiveCaseContext = createContext<ActiveCaseContextType | undefined>(undefined)
 
 export function ActiveCaseProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth()
   const [activeCase, setActiveCaseState] = useState<ActiveCase>(null)
   const [loading, setLoading] = useState(true)
 
   const refreshActiveCase = async () => {
     try {
       // Check if user is authenticated before making the request
+      if (!user) {
+        setActiveCaseState(null)
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('active_case')
+        }
+        return
+      }
+
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
       if (!token) {
-        console.log('🔐 ActiveCase: No authentication token, skipping active case fetch')
         setActiveCaseState(null)
         return
       }
@@ -37,20 +46,27 @@ export function ActiveCaseProvider({ children }: { children: React.ReactNode }) 
       }
     } catch (e: any) {
       // Handle authentication errors properly
-      if (e?.status === 401) {
+      if (e?.status === 401 || String(e?.message).includes('401')) {
         console.log('🔐 ActiveCase: Authentication error (401), clearing active case')
         setActiveCaseState(null)
         if (typeof window !== 'undefined') {
           localStorage.removeItem('active_case')
         }
       } else {
-        console.log('🔐 ActiveCase: Error fetching active case:', e?.message || e)
-        // For other errors, just ignore silently as before
+        console.warn('🔐 ActiveCase: Could not fetch active case:', e?.message || e)
       }
     }
   }
 
   useEffect(() => {
+    if (authLoading) return
+
+    if (!user) {
+      setActiveCaseState(null)
+      setLoading(false)
+      return
+    }
+
     (async () => {
       // bootstrap from localStorage quickly
       if (typeof window !== 'undefined') {
@@ -62,7 +78,7 @@ export function ActiveCaseProvider({ children }: { children: React.ReactNode }) 
       await refreshActiveCase()
       setLoading(false)
     })()
-  }, [])
+  }, [user, authLoading])
 
   const setActiveCase = async (caseId: number) => {
     await apiClient.setActiveCase(caseId)
@@ -87,5 +103,3 @@ export function useActiveCase() {
   if (!ctx) throw new Error('useActiveCase must be used within ActiveCaseProvider')
   return ctx
 }
-
-
